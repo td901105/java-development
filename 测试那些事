@@ -1,0 +1,150 @@
+基本常识
+
+在 java 项目中，测试一般都使用 JUnit 框架，目前最新的框架是 JUnit5，Junit5 和之前的版本有较大的区别。
+JUnit5 有两个引擎：junit-jupiter-engine 和 junit-vintage-engine
+
+  junit-jupiter-engine：用来执行测试用例
+  junit-vintage-engine：用来兼容 JUnit4 以及之前的测试代码，使之前的测试代码也能使用 JUnit5 的部分特性
+
+
+测试框架选择
+JUnit Jupiter 和 Mockito：
+  大多用于编写单元测试
+Spring Boot Test 框架：
+  用于编写集成测试或者端到端测试。一般用于测试 Spring Web 服务接口。SpringBootTest 支持的测试种类，大致可以分为如下三类：
+    单元测试：一般面向方法，编写一般业务代码时，测试成本较大。涉及到的注解有 @Test。
+    切片测试：一般面向难于测试的边界功能，介于单元测试和功能测试之间。涉及到的注解有 @RunWith @WebMvcTest等。
+    功能测试：一般面向某个完整的业务功能，同时也可以使用切面测试中的mock能力，推荐使用。涉及到的注解有 @RunWith @SpringBootTest等。
+
+示例
+1. 编写 Springboot 项目的功能测试用例
+  （1）为了使用 Spring Boot Test 测试框架，引入下面依赖
+    
+  <!-- Maven 依赖 -->
+  <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+  </dependency>
+
+  （2）编写测试用例
+
+    package org.apache.skywalking.apm.webapp.iam;
+
+import com.xiaomi.cloud.client.Client;
+import com.xiaomi.cloud.client.Request;
+import org.apache.http.Header;
+import org.apache.http.client.methods.HttpRequestBase;
+import org.apache.http.client.utils.URIBuilder;
+import org.apache.skywalking.apm.webapp.Application;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
+import org.springframework.web.client.RestTemplate;
+
+import java.net.URL;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Locale;
+import java.util.Objects;
+
+/**
+ * @Description
+ * @auther tangdong
+ * @create 2024-04-01 7:54 下午
+ */
+// RunWith(SpringRunner.class) 在 JUnit4 中需要加上（JUnit5 中不需要），将 Spring 和 Junit 链接了起来
+// 在测试时，一般情况下 webEnvironment 选择 RANDOM_PORT 以避免端口冲突，这里因特殊需要选择 application 配置文件中定义的端口。如果不需要启动 Web 服务，可以直接选择 None
+// @SpringBootTest 替代了 Spring-Test 中的 @ContextConfiguration 注解，目的是加载 ApplicationContext，启动 spring 容器。
+@SpringBootTest(classes = Application.class, webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT)     
+@AutoConfigureMockMvc
+public class IAMAuthTest {
+    static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss z", Locale.US);
+    static final String HEADER_HOST = "Host";
+    static final String HEADER_CONTENT_TYPE = "Content-Type";
+    static final String CONTENT_TYPE_JSON = "application/json";
+    static final String HEADER_DATE = "X-Sdk-Date";
+    private String apiDomain;
+    private String accessKey;
+    private String secretKey;
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @BeforeEach
+    void init() {
+        apiDomain = "staging-mitelemetry.mioffice.cn";
+        accessKey = System.getProperty("iam.service.ak");
+        secretKey = System.getProperty("iam.service.sk");
+    }
+
+    @Test
+    public void testHealthEndpoint() throws Exception {
+        mockMvc.perform(MockMvcRequestBuilders.get("/health"))
+                .andExpect(MockMvcResultMatchers.status().isOk())
+                .andExpect(MockMvcResultMatchers.content().string("ok"));
+    }
+
+    @Test
+    public void testFalconHealthApiAuth() throws Exception {
+        String falconHealthURI = "/iam/falcon/api/v2/health";
+        URIBuilder builder = new URIBuilder();
+        builder.setScheme("http").setHost(apiDomain).setPath(falconHealthURI);
+        URL url = builder.build().toURL();
+        Header[] headers = genRequestAuth("GET", url.toString(), "");
+
+        MockHttpServletRequestBuilder mockHttpServletRequestBuilder = MockMvcRequestBuilders.get(falconHealthURI);
+        for (Header header : headers) {
+            mockHttpServletRequestBuilder.header(header.getName(), header.getValue());
+        }
+
+        ResponseEntity<String> response = sendGetRequestWithHeaders(url.toString(), headers);
+        assert response.getStatusCode().is2xxSuccessful();
+        assert Objects.equals(response.getBody(), "\"ok\"");
+
+//        mockMvc.perform(mockHttpServletRequestBuilder)
+//                .andExpect(MockMvcResultMatchers.status().isOk())
+//                .andExpect(MockMvcResultMatchers.content().string("ok"));
+
+    }
+
+    private ResponseEntity<String> sendGetRequestWithHeaders(String url, Header[] srcHeaders) {
+        // 创建 HttpHeaders 对象并设置请求头信息
+        HttpHeaders headers = new HttpHeaders();
+        for (Header header : srcHeaders) {
+            headers.set(header.getName(), header.getValue());
+        }
+
+        // 使用 HttpHeaders 对象构建请求实体
+        HttpEntity<String> requestEntity = new HttpEntity<>(headers);
+        return new RestTemplate().exchange(url, HttpMethod.GET, requestEntity, String.class);
+    }
+
+    private Header[] genRequestAuth(String httpMethod, String url, String httpBody) throws Exception {
+        Request iamRequest = new Request();
+        iamRequest.setKey(accessKey);
+        iamRequest.setSecret(secretKey);
+        iamRequest.setMethod(httpMethod);
+        iamRequest.setUrl(url);
+        iamRequest.setBody(httpBody);
+        iamRequest.addHeader(HEADER_HOST, apiDomain);
+        iamRequest.addHeader(HEADER_CONTENT_TYPE, CONTENT_TYPE_JSON);
+        iamRequest.addHeader(HEADER_DATE, DATE_TIME_FORMATTER.format(ZonedDateTime.now(ZoneId.of("GMT"))));
+        HttpRequestBase signedRequest = Client.sign(iamRequest);
+        return signedRequest.getAllHeaders();
+    }
+}
+
+
+
