@@ -1,0 +1,59 @@
+1. AppAssembler Maven Plugin and the Maven Assembly Plugin 的区别
+
+Maven Assembly Plugin:
+
+The Maven Assembly Plugin is a versatile tool for creating distribution packages, such as JARs, WARs, and ZIPs, that include all dependencies and resources needed to run the application.
+
+It allows you to define assembly descriptors that specify how your application should be assembled. These descriptors can include configurations for including/excluding files, merging directories, setting file permissions, etc.
+The plugin is commonly used for creating standalone executable JARs or distribution packages for deployment.
+
+AppAssembler Maven Plugin:
+
+The AppAssembler Maven Plugin is specifically designed for creating scripts or launchers to run Java applications easily.
+
+It generates scripts (like shell scripts or batch files) that set up the classpath, JVM options, and other environment configurations needed to run your Java application.
+
+This plugin simplifies the process of creating launchers for your application, making it convenient for end-users to execute the application without worrying about complex classpath setups or JVM configurations.
+
+简单来说，AppAssembler 主要是用来生成启动脚本，同时支持配置 classpath, JVM options 等。Assembly 主要是用来打包，比如打包 agent 包。
+
+2. AppAssembler 生成 Springboot 项目的启动脚本
+Springboot 项目在本地可以通过 java -jar 来启动，但是如果要部署到容器中，特别是需要配置启动参数的场景，就需要自动生成启动脚本，避免人工参与带来的效率低，容易出错等问题。
+
+一般情况下只需要为 Springboot 项目整体配置参数，可以使用 extraJvmArguments 参数进行配置
+
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>appassembler-maven-plugin</artifactId>
+                <version>1.10</version>
+                <configuration>
+                    <!--lib下直接存放jar，没有路径文件夹（如com/apache)，如果没有这个选项则放在lib下的jar包会被com/apache类似的多层文件夹包裹起来 -->
+                    <repositoryLayout>flat</repositoryLayout>
+                    <projectArtifactFirstInClassPath>true</projectArtifactFirstInClassPath>
+                    <programs>
+                        <program>
+                            <mainClass>org.apache.skywalking.apm.webapp.Application</mainClass>
+                            <name>miCloudGatewayCtrl.sh</name>
+                        </program>
+                    </programs>
+                    <!-- 只能配置一个，配置多个会覆盖 -->
+                    <extraJvmArguments>
+                        ${JAVA_OPTS} -Dotel.javaagent.debug=true
+                        -Dio.opentelemetry.javaagent.slf4j.simpleLogger.logFile=/home/work/log/${service}/opentelemetry.log
+                        -javaagent:"$REPO"/opentelemetry-javaagent-${opentelemetry-javaagent.version}.jar
+                    </extraJvmArguments>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>make-assemble</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>assemble</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+
+也可以通过 jvmSettings 分别配置
+
