@@ -1,0 +1,42 @@
+避免库存超卖的问题可以有两种思路：
+
+1. 如果不存在热点数据，或者 SKU 单一
+可以使用 redis 进行限流
+
+redis 中使用一个 key 存储库存数量，不能更改（比如 100）
+每次请求进来，使用 redis.incr(current-cnt) 来原子获得 +1 之后的值，然后和库存对比，如果超过库存，直接失败
+
+
+2.如果存在热点数据
+可以将整体库存进行切分，比如整体库存是 100，可以分成 10 个 key ，每个 key 对应的库存为 10
+
+
+public static boolean flowControl(String key){
+        //最大允许100
+        int max = 100;
+        long total = 1L;
+        try {
+            if (jedisInstance.get(key) == null) {
+                //jedisInstance是Jedis连接实例，可以使单链接也可以使用链接池获取，实现方式请参考之前的blog内容
+                //如果redis目前没有这个key，创建并赋予0，有效时间为60s
+                jedisInstance.setex(key, 60, "0");
+            } else {
+                //获取加1后的值
+                total = jedisInstance.incr(redisKey).longValue();
+                //Redis TTL命令以秒为单位返回key的剩余过期时间。当key不存在时，返回-2。当key存在但没有设置剩余生存时间时，返回-1。否则，以秒为单位，返回key的剩余生存时间。
+                if (jedisInstance.ttl(redisKey).longValue() == -1L)
+                {
+                    //为给定key设置生存时间，当key过期时(生存时间为0)，它会被自动删除。
+                    jedisInstance.expire(redisKey, 60);
+                }
+            }
+        } catch (Exception e) {
+            logger.error("流量控制组件:执行计数操作失败,无法执行计数");
+        }
+        long keytotaltransations = max;
+        //判断是否已超过最大值，超过则返回false
+        if (total > keytotaltransations) {
+            return false;
+        }
+        return true;
+    }
