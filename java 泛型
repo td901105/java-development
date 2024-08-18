@@ -1,0 +1,44 @@
+java 中泛型的意义是为了避免编写大量类似的代码。
+泛型的本质是参数化了类型，在泛型使用过程中，操作的数据类型被指定为一个参数，这种参数类型可以用在类、接口和方法中，分别被称为泛型类、泛型接口、泛型方法。
+
+重点： 泛型的具体类型是由编译器根据上下文推断得出的，可以根据实例类型、参数类型、返回值类型等
+
+泛型方法：
+  （1） 编译器根据参数类型推断泛型类型
+  1. 不能使用强转
+  // <T> 表示这是一个泛型方法
+  public <T> T getObject(Class<T> c) throws InstantiationException, IllegalAccessException {
+    // 创建泛型对象
+    T t = c.newInstance();
+    return t;
+  }
+
+  调用方法：
+  Generic generic =  new Generic();
+  // 调用泛型方法
+  Object object = generic.getObject(Class.forName("com.example.demo2.generic.User"));  // 不能从参数推断出类型，需要强制转换
+  User user = (User) object;
+  user.setName("tangdong");
+
+2. 能使用强转
+  public <T> T getObjectByType(T arg) throws InstantiationException, IllegalAccessException {
+      return (T) arg;
+  }
+调用方法:
+ String str = generic.getObjectByType("string");
+ System.out.println(str);
+
+ User user2 = generic.getObjectByType(new User());  // 能直接从参数推断出类型，不需要强制转换
+ user2.setName("tangdong3");
+ System.out.println(new Gson().toJson(user2));
+
+(2)  编译器根据返回值推断类型
+    public <T> T findList(String sqlID, Map<String,Object> params) {
+        String statement = "com.mybatis.mapping.userMapper." + sqlID; // Mapping SQL identifier string
+        User user =  new User();
+        user.setName("tangdong1");
+        return (T) Arrays.asList(user);  // (T) 是强制转换操作，和上面的 User user = (User) object 语句一致，getObject 方法因为不能根据 c 参数推断出具体类型，所以不能在方法中强转
+    }
+  调用方法： Java的类型推断机制允许编译器在你调用泛型方法时根据上下文自动确定类型。
+  List<User> users = findList("selectUsersById", params);  // 编译器看到返回值类型为List<User>，因此将T推断为List<User>。
+  List<Order> orders = findList("selectOrders", params);  // T将被推断为List<Order>
